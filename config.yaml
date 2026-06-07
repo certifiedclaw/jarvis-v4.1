@@ -1,0 +1,126 @@
+# JARVIS v4.1 configuration
+# Drop-in replacement for config.yaml — all new keys are additive and backward-compatible.
+
+agent:
+  max_replan: 2
+  max_tool_rounds: 8
+  stream_responses: true
+
+app:
+  first_run: false
+  hotkey: ctrl+alt+j
+  minimize_to_tray: true
+  name: JARVIS
+  show_on_startup: true
+  theme: dark
+  version: 4.1.0   # FIX: was incorrectly set to 3.0.0
+
+browser:
+  auto_connect: true
+  cdp_host: localhost
+  cdp_port: 9222
+  preferred_browser: brave
+
+llm:
+  auto_pull_models:
+    - qwen3:8b
+  auto_route: true
+  deep_model: qwen3:14b
+  default_model: qwen3:8b
+  fast_model: qwen3:8b
+  num_ctx: 8192
+  ollama_url: http://localhost:11434
+  route_threshold: 400
+  temperature: 0.7
+  timeout_seconds: 120
+  vision_model: llava:latest
+
+logging:
+  level: INFO
+  log_dir: ./logs
+  max_log_files: 7
+
+memory:
+  chat_history_limit: 100
+  db_path: ./data/memory.db
+  embedding_model: all-MiniLM-L6-v2
+  max_context_tokens: 800
+  relevance_threshold: 0.35
+  # FIX #2 — agent.py now reads this key so both places stay in sync.
+  # Changing this value controls how many turns JARVIS remembers per session.
+  window: 12
+
+pdf:
+  auto_index_dirs: []
+  enabled: true
+  index_db_path: ./data/pdf_index.db
+  max_file_size_mb: 50
+
+plugins:
+  enabled: true
+  plugin_dir: ./plugins
+
+rag:
+  chunk_overlap: 50
+  chunk_size: 500
+  enabled: true
+  index_path: ./data/rag_index
+  top_k: 5
+  watch_dirs: []
+
+safety:
+  allowed_paths:
+    - '~'
+    - .
+  # NOTE: run_shell / shell are always high-risk and always require
+  # confirmation — they cannot be removed from this protection by editing
+  # this list. See safety.py _UNCONDITIONAL_HIGH_RISK.
+  confirm_on:
+    - delete
+    - shell
+    - write_file
+  max_read_bytes: 5242880
+  max_tool_output: 8000
+
+voice:
+  enabled: false
+  input_device_index: null
+  tts_rate: 175
+  tts_volume: 0.92
+  vosk_model_dirs:
+    - ./data/vosk-model-small-en-us-0.15
+  wake_words:
+    - hey jarvis
+    - jarvis
+
+# ── NEW in v4.1 ──────────────────────────────────────────────────────────
+
+# OSINT tool guard-rails (FIX #6)
+osint:
+  # Hard cap on characters returned by any OSINT tool before the result is
+  # truncated. Prevents flooding the LLM context window.
+  max_output_chars: 2000
+  # Seconds before an OSINT tool call is forcibly cancelled.
+  timeout_seconds: 30
+
+# MCP bridge — connect external MCP servers (Feature #7)
+mcp:
+  enabled: false
+  servers:
+    # Example entry — uncomment and fill in to connect a server:
+    # - name: obsidian
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-obsidian", "/path/to/vault"]
+    # - name: github
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-github"]
+    #   env:
+    #     GITHUB_TOKEN: "your_token_here"
+
+# REST / streaming API server (Feature #8)
+api:
+  enabled: false
+  host: 127.0.0.1
+  port: 8765
+  # Set to true to allow connections from other machines on your network
+  allow_external: false

@@ -1,0 +1,105 @@
+cat > /mnt/user-data/outputs/main.py << 'PYEOF'
+"""
+main.py — JARVIS v3 Entry Point (Fixed)
+
+Fixes applied:
+1. hotkey_commands / task_scheduler imports wrapped in try/except ImportError
+2. plugins.register() call guarded — only called when both plugins and
+   scheduler exist, and only if PluginSystem actually has .register()
+"""
+
+import logging
+import os
+import sys
+
+from PySide6.QtWidgets import QApplication
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    handlers=[
+        logging.FileHandler("logs/jarvis.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+log = logging.getLogger("main")
+log.info("JARVIS v3 starting up")
+
+# ── Qt app ────────────────────────────────────────────────────────────────────
+app = QApplication(sys.argv)
+app.setApplicationName("JARVIS")
+app.setQuitOnLastWindowClosed(False)
+
+# ── Config ────────────────────────────────────────────────────────────────────
+from config_loader import ConfigLoader
+cfg = ConfigLoader()
+
+# ── Theme ─────────────────────────────────────────────────────────────────────
+import themes
+themes.apply(app, cfg.get("app.theme", "dark"))
+
+# ── Ensure directories ────────────────────────────────────────────────────────
+for d in ("data", "logs", "data/screenshots", "data/rag_index"):
+    os.makedirs(d, exist_ok=True)
+
+# ── Loading screen ────────────────────────────────────────────────────────────
+from loading_screen import LoadingScreen
+splash = LoadingScreen(cfg)
+
+
+def on_init_done(ctx: dict) -> None:
+    log.info("Init complete. Launching main window.")
+
+    from main_window import MainWindow
+    window = MainWindow(ctx)
+
+    if cfg.get("app.is_first_run", False):
+        from welcome_dialog import WelcomeDialog
+        dlg = WelcomeDialog(cfg, voice=ctx.get("voice"), parent=window)
+        dlg.exec()
+
+    agent   = ctx.get("agent")
+    plugins = ctx.get("plugins")
+
+    # ── Optional: global hotkey ───────────────────────────────────────────────
+    hk = None
+    try:
+        from hotkey_commands import HotkeyManager
+        hk = HotkeyManager(agent=agent, window=window, config=cfg)
+        hk.start()
+        app.aboutToQuit.connect(hk.stop)
+    except ImportError:
+        log.warning("hotkey_commands not found — global hotkey disabled")
+
+    # ── Optional: task scheduler ──────────────────────────────────────────────
+    scheduler = None
+    try:
+        from task_scheduler import TaskScheduler
+        scheduler = TaskScheduler(agent=agent, config=cfg)
+        scheduler.start()
+        app.aboutToQuit.connect(scheduler.stop)
+
+        # Register scheduler tools into the plugin system (if both exist)
+        if plugins is not None and scheduler is not None:
+            sched_tools = scheduler.as_tools()
+            for name, fn in sched_tools.items():
+                # Use .register() if available, else fall back to direct dict write
+                if hasattr(plugins, "register"):
+                    plugins.register(name, fn)
+                elif hasattr(plugins, "_tools"):
+                    plugins._tools[name] = fn
+    except ImportError:
+        log.warning("task_scheduler not found — scheduled tasks disabled")
+
+    window.show()
+
+
+splash.finished.connect(on_init_done)
+splash.show()
+
+log.info("Qt event loop starting")
+sys.exit(app.exec())
+PYEOF
+echo "done"
